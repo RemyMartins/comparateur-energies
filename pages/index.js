@@ -11,78 +11,81 @@ export default function Home() {
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
- const handleSubmit = async (e) => {
-  e.preventDefault()
-  setLoading(true)
-  
-  try {
-    console.log('Envoi de la requête...', formData)
+  // NOUVELLE FONCTION - Connexion à la vraie API
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
     
-    const response = await fetch('/api/compare', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        postalCode: formData.postalCode,
-        consumption: parseInt(formData.consumption),
-        preferGreen: formData.preferGreen
+    try {
+      console.log('Envoi de la requête...', formData)
+      
+      const response = await fetch('/api/compare', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postalCode: formData.postalCode,
+          consumption: parseInt(formData.consumption),
+          preferGreen: formData.preferGreen
+        })
       })
-    })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || 'Erreur lors de la comparaison')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Erreur lors de la comparaison')
+      }
+
+      const data = await response.json()
+      console.log('Résultats reçus:', data)
+      
+      setResults(data.results || [])
+      setLoading(false)
+      
+    } catch (error) {
+      console.error('Erreur:', error)
+      setLoading(false)
+      alert('Une erreur est survenue. Veuillez réessayer.')
     }
-
-    const data = await response.json()
-    console.log('Résultats reçus:', data)
-    
-    setResults(data.results || [])
-    setLoading(false)
-    
-  } catch (error) {
-    console.error('Erreur:', error)
-    setLoading(false)
-    alert('Une erreur est survenue. Veuillez réessayer.')
   }
-}
-const handleLeadSubmit = async (supplier) => {
-  const email = prompt('Votre email pour être recontacté :')
-  const phone = prompt('Votre téléphone (optionnel) :')
-  
-  if (!email) return
-  
-  try {
-    const response = await fetch('/api/lead', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email,
-        phone,
-        postalCode: formData.postalCode,
-        consumption: formData.consumption,
-        preferGreen: formData.preferGreen,
-        supplierId: supplier.id,
-        supplierName: supplier.name
+
+  // NOUVELLE FONCTION - Sauvegarde des leads
+  const handleLeadSubmit = async (supplier) => {
+    const email = prompt('Votre email pour être recontacté :')
+    const phone = prompt('Votre téléphone (optionnel) :')
+    
+    if (!email) return
+    
+    try {
+      const response = await fetch('/api/lead', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          phone,
+          postalCode: formData.postalCode,
+          consumption: formData.consumption,
+          preferGreen: formData.preferGreen,
+          supplierId: supplier.id,
+          supplierName: supplier.name
+        })
       })
-    })
 
-    const data = await response.json()
-    
-    if (data.success) {
-      alert(`✅ Merci ! ${supplier.name} va vous recontacter sous 24h.`)
-    } else {
-      throw new Error(data.error)
+      const data = await response.json()
+      
+      if (data.success) {
+        alert(`✅ Merci ! ${supplier.name} va vous recontacter sous 24h.`)
+      } else {
+        throw new Error(data.error)
+      }
+      
+    } catch (error) {
+      console.error('Erreur lead:', error)
+      alert('Erreur lors de l\'enregistrement. Réessayez.')
     }
-    
-  } catch (error) {
-    console.error('Erreur lead:', error)
-    alert('Erreur lors de l\'enregistrement. Réessayez.')
   }
-}
 
   return (
     <div className={styles.container}>
@@ -187,7 +190,7 @@ const handleLeadSubmit = async (supplier) => {
           </div>
         </div>
 
-        {/* Résultats */}
+        {/* Résultats - SECTION MODIFIÉE */}
         {results.length > 0 && (
           <div className={styles.resultsSection}>
             <div className={styles.resultsHeader}>
@@ -197,7 +200,7 @@ const handleLeadSubmit = async (supplier) => {
             
             <div className={styles.resultsGrid}>
               {results.map((supplier, index) => (
-                <div key={index} className={`${styles.resultCard} ${index === 0 ? styles.bestOffer : ''}`}>
+                <div key={supplier.id} className={`${styles.resultCard} ${index === 0 ? styles.bestOffer : ''}`}>
                   {index === 0 && (
                     <div className={styles.bestBadge}>
                       🏆 Meilleure offre
@@ -231,12 +234,16 @@ const handleLeadSubmit = async (supplier) => {
                     <div className={styles.feature}>✅ Changement gratuit</div>
                     <div className={styles.feature}>✅ Sans coupure</div>
                     <div className={styles.feature}>✅ Sans engagement</div>
+                    {supplier.phone && (
+                      <div className={styles.feature}>📞 {supplier.phone}</div>
+                    )}
                   </div>
                   
-                  <button className={styles.ctaButton} onClick={() => {
-                    // Simulation tracking conversion
-                    console.log(`Lead généré pour ${supplier.name} - Commission: ${supplier.commission}€`)
-                  }}>
+                  {/* BOUTON MODIFIÉ - ICI LE CODE JSX ! */}
+                  <button 
+                    className={styles.ctaButton} 
+                    onClick={() => handleLeadSubmit(supplier)}
+                  >
                     📞 Être rappelé gratuitement
                   </button>
                 </div>
