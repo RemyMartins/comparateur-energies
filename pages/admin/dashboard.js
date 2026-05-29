@@ -1,85 +1,68 @@
 import { useState, useEffect } from 'react'
-import { supabaseAdmin } from '../../lib/supabase'
+import Head from 'next/head'
 import styles from '../../styles/Dashboard.module.css'
 
-export default function Dashboard() {
+export default function Dashboard({ error }) {
   const [stats, setStats] = useState(null)
   const [leads, setLeads] = useState([])
-  const [conversions, setConversions] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadDashboardData()
-  }, [])
+    if (!error) {
+      loadDashboardData()
+    }
+  }, [error])
 
   const loadDashboardData = async () => {
     try {
-      // Stats générales
-      const [
-        { count: totalLeads },
-        { count: todayLeads },
-        { data: supplierStats },
-        { data: recentLeads },
-        { data: recentConversions }
-      ] = await Promise.all([
-        supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }),
-        supabaseAdmin.from('leads').select('*', { count: 'exact', head: true })
-          .gte('created_at', new Date(new Date().setHours(0,0,0,0)).toISOString()),
-        supabaseAdmin.from('leads').select(`
-          supplier_id,
-          suppliers(name, slug, commission)
-        `).limit(100),
-        supabaseAdmin.from('leads').select(`
-          *,
-          suppliers(name, slug)
-        `).order('created_at', { ascending: false }).limit(20),
-        supabaseAdmin.from('conversions').select('*')
-          .order('tracked_at', { ascending: false }).limit(10)
-      ])
-
-      // Calcul des stats par fournisseur
-      const supplierLeadCount = {}
-      const supplierCommissions = {}
+      // Appel à votre API pour récupérer les stats
+      const response = await fetch('/api/admin/stats')
+      const data = await response.json()
       
-      supplierStats?.forEach(lead => {
-        const supplier = lead.suppliers
-        if (supplier) {
-          supplierLeadCount[supplier.name] = (supplierLeadCount[supplier.name] || 0) + 1
-          supplierCommissions[supplier.name] = supplier.commission
-        }
-      })
-
-      // Calcul revenus potentiels (estimation 15% de conversion)
-      const potentialRevenue = Object.entries(supplierLeadCount)
-        .reduce((total, [supplier, count]) => {
-          return total + (count * (supplierCommissions[supplier] || 0) * 0.15)
-        }, 0)
-
-      setStats({
-        totalLeads,
-        todayLeads,
-        supplierLeadCount,
-        potentialRevenue: Math.round(potentialRevenue)
-      })
-      
-      setLeads(recentLeads || [])
-      setConversions(recentConversions || [])
+      setStats(data.stats)
+      setLeads(data.leads)
       
     } catch (error) {
       console.error('Erreur chargement dashboard:', error)
+      setStats({
+        totalLeads: 0,
+        todayLeads: 0,
+        potentialRevenue: 0,
+        supplierStats: {}
+      })
+      setLeads([])
     } finally {
       setLoading(false)
     }
   }
 
+  if (error) {
+    return (
+      <div className={styles.errorPage}>
+        <h1>🔒 Accès Refusé</h1>
+        <p>Mot de passe incorrect</p>
+        <p>URL correcte : <code>/admin/dashboard?password=votre-mot-de-passe</code></p>
+      </div>
+    )
+  }
+
   if (loading) {
-    return <div className={styles.loading}>Chargement du dashboard...</div>
+    return (
+      <div className={styles.loading}>
+        <div className={styles.spinner}></div>
+        <p>Chargement du dashboard...</p>
+      </div>
+    )
   }
 
   return (
     <div className={styles.dashboard}>
+      <Head>
+        <title>Dashboard Admin - Comparateur Énergies</title>
+      </Head>
+
       <header className={styles.header}>
-        <h1>📊 Dashboard Comparateur Énergies</h1>
+        <h1>📊 Dashboard Admin</h1>
         <div className={styles.date}>
           {new Date().toLocaleDateString('fr-FR', { 
             weekday: 'long', 
@@ -93,111 +76,141 @@ export default function Dashboard() {
       {/* Stats principales */}
       <div className={styles.statsGrid}>
         <div className={styles.statCard}>
-          <div className={styles.statNumber}>{stats.totalLeads}</div>
+          <div className={styles.statIcon}>👥</div>
+          <div className={styles.statNumber}>{stats?.totalLeads || 0}</div>
           <div className={styles.statLabel}>Leads Total</div>
         </div>
         
         <div className={styles.statCard}>
-          <div className={styles.statNumber}>{stats.todayLeads}</div>
+          <div className={styles.statIcon}>🎯</div>
+          <div className={styles.statNumber}>{stats?.todayLeads || 0}</div>
           <div className={styles.statLabel}>Leads Aujourd'hui</div>
         </div>
         
         <div className={styles.statCard}>
-          <div className={styles.statNumber}>{stats.potentialRevenue}€</div>
+          <div className={styles.statIcon}>💰</div>
+          <div className={styles.statNumber}>{stats?.potentialRevenue || 0}€</div>
           <div className={styles.statLabel}>Revenus Potentiels</div>
+          <div className={styles.statHint}>Estimation 15% conversion</div>
         </div>
         
         <div className={styles.statCard}>
+          <div className={styles.statIcon}>⚡</div>
           <div className={styles.statNumber}>
-            {Object.keys(stats.supplierLeadCount).length}
+            {Object.keys(stats?.supplierStats || {}).length}
           </div>
-          <div className={styles.statLabel}>Fournisseurs Actifs</div>
+          <div className={styles.statLabel}>Fournisseurs</div>
         </div>
       </div>
 
       {/* Répartition par fournisseur */}
-      <div className={styles.section}>
-        <h2>📈 Leads par Fournisseur</h2>
-        <div className={styles.supplierStats}>
-          {Object.entries(stats.supplierLeadCount)
-            .sort(([,a], [,b]) => b - a)
-            .map(([supplier, count]) => (
-              <div key={supplier} className={styles.supplierRow}>
-                <span className={styles.supplierName}>{supplier}</span>
-                <span className={styles.supplierCount}>{count} leads</span>
-                <span className={styles.supplierRevenue}>
-                  ~{Math.round(count * (supplierCommissions[supplier] || 0) * 0.15)}€
-                </span>
-              </div>
-            ))
-          }
+      {stats?.supplierStats && Object.keys(stats.supplierStats).length > 0 && (
+        <div className={styles.section}>
+          <h2>📈 Répartition par Fournisseur</h2>
+          <div className={styles.supplierGrid}>
+            {Object.entries(stats.supplierStats)
+              .sort(([,a], [,b]) => b.count - a.count)
+              .map(([supplier, data]) => (
+                <div key={supplier} className={styles.supplierCard}>
+                  <h3>{supplier}</h3>
+                  <div className={styles.supplierCount}>{data.count} leads</div>
+                  <div className={styles.supplierRevenue}>
+                    ~{Math.round(data.count * (data.commission || 70) * 0.15)}€ potentiel
+                  </div>
+                  <div className={styles.supplierCommission}>
+                    Commission: {data.commission || 70}€
+                  </div>
+                </div>
+              ))
+            }
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Leads récents */}
       <div className={styles.section}>
-        <h2>🎯 Leads Récents</h2>
-        <div className={styles.table}>
-          <div className={styles.tableHeader}>
-            <div>Email</div>
-            <div>Fournisseur</div>
-            <div>Code Postal</div>
-            <div>Consommation</div>
-            <div>Date</div>
-            <div>Statut</div>
-          </div>
-          {leads.map(lead => (
-            <div key={lead.id} className={styles.tableRow}>
-              <div>{lead.email}</div>
-              <div>{lead.suppliers?.name}</div>
-              <div>{lead.postal_code}</div>
-              <div>{lead.consumption} kWh</div>
-              <div>
-                {new Date(lead.created_at).toLocaleDateString('fr-FR')}
-              </div>
-              <div>
-                <span className={`${styles.status} ${styles[lead.status]}`}>
-                  {lead.status}
-                </span>
-              </div>
+        <h2>🎯 Leads Récents ({leads.length})</h2>
+        
+        {leads.length === 0 ? (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyIcon}>📭</div>
+            <h3>Aucun lead pour l'instant</h3>
+            <p>Partagez votre site pour commencer à générer des leads !</p>
+            <div className={styles.siteUrl}>
+              {typeof window !== 'undefined' && (
+                <code>{window.location.origin}</code>
+              )}
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Conversions récentes */}
-      <div className={styles.section}>
-        <h2>💰 Conversions</h2>
-        <div className={styles.conversions}>
-          {conversions.map(conversion => (
-            <div key={conversion.id} className={styles.conversionCard}>
-              <div className={styles.conversionHeader}>
-                <span className={styles.trackingId}>{conversion.tracking_id}</span>
-                <span className={styles.conversionStatus}>
-                  {conversion.status === 'confirmed' ? '✅' : '⏳'}
-                </span>
-              </div>
-              <div className={styles.conversionDetails}>
-                <div>Fournisseur: {conversion.supplier_slug}</div>
-                <div>Commission: {conversion.commission_amount}€</div>
+          </div>
+        ) : (
+          <div className={styles.leadsTable}>
+            <div className={styles.tableHeader}>
+              <div>📧 Email</div>
+              <div>🏢 Fournisseur</div>
+              <div>📍 Code Postal</div>
+              <div>⚡ Consommation</div>
+              <div>📅 Date</div>
+              <div>📊 Statut</div>
+            </div>
+            {leads.map(lead => (
+              <div key={lead.id} className={styles.tableRow}>
+                <div className={styles.email}>{lead.email}</div>
+                <div>{lead.supplier_name || 'N/A'}</div>
+                <div>{lead.postal_code}</div>
+                <div>{lead.consumption?.toLocaleString()} kWh</div>
+                <div className={styles.date}>
+                  {new Date(lead.created_at).toLocaleDateString('fr-FR')}
+                </div>
                 <div>
-                  Date: {new Date(conversion.tracked_at).toLocaleDateString('fr-FR')}
+                  <span className={`${styles.status} ${styles[lead.status] || styles.pending}`}>
+                    {lead.status === 'pending' ? '⏳ En attente' :
+                     lead.status === 'contacted' ? '📞 Contacté' :
+                     lead.status === 'converted' ? '✅ Converti' : 
+                     '❌ Rejeté'}
+                  </span>
                 </div>
               </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Instructions */}
+      <div className={styles.section}>
+        <h2>🚀 Prochaines étapes</h2>
+        <div className={styles.instructions}>
+          <div className={styles.instruction}>
+            <div className={styles.step}>1</div>
+            <div>
+              <h3>Générer du trafic</h3>
+              <p>Partagez votre site sur les réseaux sociaux, avec vos contacts</p>
             </div>
-          ))}
+          </div>
+          <div className={styles.instruction}>
+            <div className={styles.step}>2</div>
+            <div>
+              <h3>Contacter les fournisseurs</h3>
+              <p>Dès que vous avez 10-20 leads, contactez Enercoop et ilek</p>
+            </div>
+          </div>
+          <div className={styles.instruction}>
+            <div className={styles.step}>3</div>
+            <div>
+              <h3>Optimiser les conversions</h3>
+              <p>Testez différentes versions du formulaire</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-// Protection de la page admin
-export async function getServerSideProps({ req, query }) {
-  // Vérification mot de passe simple
+// Vérification du mot de passe côté serveur
+export async function getServerSideProps({ query }) {
   const { password } = query
   
-  if (password !== process.env.ADMIN_PASSWORD) {
+  if (!password || password !== process.env.ADMIN_PASSWORD) {
     return {
       props: {
         error: 'Accès refusé'
@@ -206,6 +219,8 @@ export async function getServerSideProps({ req, query }) {
   }
 
   return {
-    props: {}
+    props: {
+      error: null
+    }
   }
 }
