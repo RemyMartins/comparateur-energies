@@ -11,88 +11,78 @@ export default function Home() {
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
+ const handleSubmit = async (e) => {
+  e.preventDefault()
+  setLoading(true)
+  
+  try {
+    console.log('Envoi de la requête...', formData)
     
-    // Simulation réaliste avec calculs vrais
-    setTimeout(() => {
-      const basePrice = 0.1740 // Prix base kWh en €
-      const greenSupplement = 0.02 // Supplément vert
-      
-      const suppliers = [
-        {
-          name: 'Enercoop',
-          baseRate: basePrice + 0.03,
-          fixedCost: 16.37,
-          greenPercent: 100,
-          commission: 80
-        },
-        {
-          name: 'ilek',
-          baseRate: basePrice + 0.025,
-          fixedCost: 12.44,
-          greenPercent: 100,
-          commission: 75
-        },
-        {
-          name: 'TotalEnergies Verte',
-          baseRate: basePrice + 0.015,
-          fixedCost: 11.34,
-          greenPercent: 100,
-          commission: 70
-        },
-        {
-          name: 'Vattenfall',
-          baseRate: basePrice + 0.01,
-          fixedCost: 9.54,
-          greenPercent: 80,
-          commission: 65
-        },
-        {
-          name: 'Planète OUI',
-          baseRate: basePrice + 0.02,
-          fixedCost: 8.84,
-          greenPercent: 100,
-          commission: 60
-        }
-      ]
-      
-      // Calculs réels
-      const mockResults = suppliers.map(supplier => {
-        const monthlyVariable = (formData.consumption / 12) * supplier.baseRate
-        const monthlyFixed = supplier.fixedCost
-        const monthlyTotal = monthlyVariable + monthlyFixed
-        const yearlyTotal = monthlyTotal * 12
-        
-        // Calcul économies vs EDF
-        const edfYearly = (formData.consumption * 0.2062) + (12 * 12.44)
-        const savings = Math.round(edfYearly - yearlyTotal)
-        
-        return {
-          name: supplier.name,
-          monthlyPrice: Math.round(monthlyTotal * 100) / 100,
-          yearlyPrice: Math.round(yearlyTotal),
-          greenPercent: supplier.greenPercent,
-          savings: savings > 0 ? savings : 0,
-          commission: supplier.commission
-        }
+    const response = await fetch('/api/compare', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        postalCode: formData.postalCode,
+        consumption: parseInt(formData.consumption),
+        preferGreen: formData.preferGreen
       })
-      
-      // Filtrage et tri
-      let filteredResults = formData.preferGreen 
-        ? mockResults.filter(r => r.greenPercent === 100)
-        : mockResults
-        
-      // Tri par économies décroissantes
-      filteredResults = filteredResults
-        .sort((a, b) => b.savings - a.savings)
-        .slice(0, 5)
-        
-      setResults(filteredResults)
-      setLoading(false)
-    }, 2000)
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Erreur lors de la comparaison')
+    }
+
+    const data = await response.json()
+    console.log('Résultats reçus:', data)
+    
+    setResults(data.results || [])
+    setLoading(false)
+    
+  } catch (error) {
+    console.error('Erreur:', error)
+    setLoading(false)
+    alert('Une erreur est survenue. Veuillez réessayer.')
   }
+}
+const handleLeadSubmit = async (supplier) => {
+  const email = prompt('Votre email pour être recontacté :')
+  const phone = prompt('Votre téléphone (optionnel) :')
+  
+  if (!email) return
+  
+  try {
+    const response = await fetch('/api/lead', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        phone,
+        postalCode: formData.postalCode,
+        consumption: formData.consumption,
+        preferGreen: formData.preferGreen,
+        supplierId: supplier.id,
+        supplierName: supplier.name
+      })
+    })
+
+    const data = await response.json()
+    
+    if (data.success) {
+      alert(`✅ Merci ! ${supplier.name} va vous recontacter sous 24h.`)
+    } else {
+      throw new Error(data.error)
+    }
+    
+  } catch (error) {
+    console.error('Erreur lead:', error)
+    alert('Erreur lors de l\'enregistrement. Réessayez.')
+  }
+}
 
   return (
     <div className={styles.container}>
